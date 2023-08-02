@@ -1,0 +1,93 @@
+name: Build (Windows)
+
+on:
+  push:
+    paths:
+      - 'src/*'
+      - '.github/workflows/windows-build.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'which tag to upload to'
+        default: ''
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+
+    defaults:
+      run:
+        shell: cmd
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Setup Ninja
+      run: pip install ninja
+
+    - name: Cache CUDA
+      id: cache-cuda
+      uses: actions/cache@v3
+      with:
+        path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA
+        key: ${{ runner.os }}-cuda-12.2.1
+
+    - name: Setup CUDA
+      if: steps.cache-cuda.outputs.cache-hit != 'true'
+      run: |
+        curl -s -o cuda_installer.exe -L https://developer.download.nvidia.com/compute/cuda/12.2.1/network_installers/cuda_12.2.1_windows_network.exe
+        cuda_installer.exe -s nvcc_12.2 cudart_12.2
+
+    - name: Download VapourSynth headers
+      run: |
+        mkdir vapoursynth\include
+        curl https://raw.githubusercontent.com/vapoursynth/vapoursynth/master/include/VapourSynth4.h -o vapoursynth\include\VapourSynth4.h
+        curl https://raw.githubusercontent.com/vapoursynth/vapoursynth/master/include/VSHelper4.h -o vapoursynth\include\VSHelper4.h
+
+    - name: Configure
+      run: cmake -S . -B build -G Ninja -LA
+        -D CMAKE_BUILD_TYPE=Release
+        -D CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+        -D VS_INCLUDE_DIR="%cd%\vapoursynth\include"
+        -D CMAKE_CUDA_FLAGS="--threads 0 --use_fast_math --resource-usage -Wno-deprecated-gpu-targets"
+        -D CMAKE_CUDA_ARCHITECTURES="50;61-real;75-real;86-real;89-real"
+      env:
+        CUDA_PATH: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.2
+
+    - name: Build
+      run: cmake --build build --verbose
+
+    - name: Install
+      run: cmake --install build --prefix install
+
+    - name: Upload
+      uses: actions/upload-artifact@v3
+      with:
+        name: vapoursynth-chromanrcuda-windows
+        path: install/bin/*.dll
+
+    - name: Compress artifact for release
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      run: |
+        cd install
+
+        mkdir vapoursynth-chromanrcuda-${{ github.event.inputs.tag }}
+        xcopy bin\chromanrcuda.dll vapoursynth-chromanrcuda-${{ github.event.inputs.tag }} /f
+        7z a -t7z -mx=9 ../vapoursynth-chromanrcuda-${{ github.event.inputs.tag }}.7z vapoursynth-chromanrcuda-${{ github.event.inputs.tag }}
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+      with:
+        tag_name: ${{ github.event.inputs.tag }}
+        files: |
+          vapoursynth-chromanrcuda-${{ github.event.inputs.tag }}.7z
+        fail_on_unmatched_files: true
+        generate_release_notes: false
+        prerelease: false
