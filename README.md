@@ -7,7 +7,7 @@ This version is made with cuda, if you don't have an nvidia GPU, check out the [
 
 ## Usage
 ```python
-chromanrcuda.CNR(vnode clip[, float thres=4, float threy=20, float threu=20, float threv=20, int sizew=1, int sizeh=1, int stepw=1, int steph=1, int distance=0])
+chromanrcuda.CNR(vnode clip[, float thres=4, float threy=20, float threu=20, float threv=20, int sizew=3, int sizeh=3, int stepw=1, int steph=1, int distance=0])
 ```
 ### Parameters:
 
